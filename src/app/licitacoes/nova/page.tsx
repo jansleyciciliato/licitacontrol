@@ -1,46 +1,60 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2, Sparkles } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { UploadArquivo } from "@/components/nova-licitacao/upload-arquivo";
-import { FormLicitacao } from "@/components/nova-licitacao/form-licitacao";
 import { MODELOS, MODELO_PADRAO } from "@/lib/modelos";
 
-type Etapa = "upload" | "analisando" | "revisao";
+type Etapa = "upload" | "analisando" | "salvando";
 
 export default function NovaLicitacaoPage() {
+  const router = useRouter();
   const [etapa, setEtapa] = useState<Etapa>("upload");
   const [modeloSelecionado, setModeloSelecionado] = useState(MODELO_PADRAO);
-  const [dadosExtraidos, setDadosExtraidos] = useState<Record<string, unknown> | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
-  const analisar = async (file: File) => {
-    setEtapa("analisando");
+  const modeloAtual = MODELOS.find((m) => m.id === modeloSelecionado);
+
+  const processar = async (file: File) => {
     setErro(null);
+    setEtapa("analisando");
 
     try {
+      // 1. Extrair e analisar com IA
       const formData = new FormData();
       formData.append("file", file);
       formData.append("model", modeloSelecionado);
 
-      const res = await fetch("/api/licitacoes/analisar", {
+      const resAnalise = await fetch("/api/licitacoes/analisar", {
         method: "POST",
         body: formData,
       });
 
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Erro ao analisar.");
+      const jsonAnalise = await resAnalise.json();
+      if (!resAnalise.ok) throw new Error(jsonAnalise.error ?? "Erro ao analisar o edital.");
 
-      setDadosExtraidos(json.dados);
-      setEtapa("revisao");
+      setEtapa("salvando");
+
+      // 2. Salvar no banco automaticamente
+      const resSalvar = await fetch("/api/licitacoes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...jsonAnalise.dados, status: "ANALISAR" }),
+      });
+
+      const jsonSalvar = await resSalvar.json();
+      if (!resSalvar.ok) throw new Error(jsonSalvar.error ?? "Erro ao salvar no banco.");
+
+      // 3. Redirecionar para o detalhe
+      router.push(`/licitacoes/${jsonSalvar.id}`);
+
     } catch (error) {
-      setErro(error instanceof Error ? error.message : "Erro ao analisar.");
+      setErro(error instanceof Error ? error.message : "Erro inesperado.");
       setEtapa("upload");
     }
   };
-
-  const modeloAtual = MODELOS.find((m) => m.id === modeloSelecionado);
 
   return (
     <AppShell>
@@ -48,7 +62,7 @@ export default function NovaLicitacaoPage() {
         <div className="mb-8">
           <h1 className="font-heading text-2xl font-bold text-foreground">Nova Licitação</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Faça upload do edital para extração automática via IA
+            Faça upload do edital — a IA extrai e salva os dados automaticamente
           </p>
         </div>
 
@@ -71,15 +85,13 @@ export default function NovaLicitacaoPage() {
                     }`}
                   >
                     <span className="text-sm font-medium">{modelo.nome}</span>
-                    <span className="text-xs text-muted-foreground capitalize mt-0.5">
-                      {modelo.provedor}
-                    </span>
+                    <span className="text-xs text-muted-foreground capitalize mt-0.5">{modelo.provedor}</span>
                   </button>
                 ))}
               </div>
             </div>
 
-            <UploadArquivo onArquivoSelecionado={analisar} />
+            <UploadArquivo onArquivoSelecionado={processar} />
 
             {erro && (
               <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
@@ -89,7 +101,7 @@ export default function NovaLicitacaoPage() {
           </div>
         )}
 
-        {etapa === "analisando" && (
+        {(etapa === "analisando" || etapa === "salvando") && (
           <div className="flex flex-col items-center justify-center gap-4 py-24">
             <div className="relative flex h-16 w-16 items-center justify-center">
               <div className="absolute inset-0 rounded-full bg-primary/10 animate-ping" />
@@ -98,28 +110,16 @@ export default function NovaLicitacaoPage() {
               </div>
             </div>
             <div className="text-center">
-              <p className="font-medium text-foreground">Analisando o edital...</p>
+              <p className="font-medium text-foreground">
+                {etapa === "analisando" ? "Analisando o edital..." : "Salvando licitação..."}
+              </p>
               <p className="text-sm text-muted-foreground mt-1">
-                {modeloAtual?.nome} está extraindo as informações
+                {etapa === "analisando"
+                  ? `${modeloAtual?.nome} está extraindo as informações`
+                  : "Registrando no banco de dados"}
               </p>
             </div>
             <Loader2 className="h-5 w-5 text-muted-foreground animate-spin mt-2" />
-          </div>
-        )}
-
-        {etapa === "revisao" && dadosExtraidos && (
-          <div className="flex flex-col gap-6">
-            <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
-              <Sparkles className="h-4 w-4 text-primary shrink-0" />
-              <p className="text-sm text-primary">
-                Dados extraídos por {modeloAtual?.nome} — revise antes de salvar
-              </p>
-            </div>
-            <div className="rounded-xl border border-border bg-card p-6">
-              <FormLicitacao
-                dadosIniciais={dadosExtraidos as Parameters<typeof FormLicitacao>[0]["dadosIniciais"]}
-              />
-            </div>
           </div>
         )}
       </div>

@@ -3,17 +3,22 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import mammoth from "mammoth";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse") as (buffer: Buffer) => Promise<{ text: string }>;
+const pdfParse = require("pdf-parse/lib/pdf-parse") as (buffer: Buffer) => Promise<{ text: string }>;
 
 const MODELOS_ANTHROPIC = ["claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5-20251001"];
 const MODELOS_OPENAI = ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"];
+
+// Remove artefato de caracteres repetidos 4+ vezes (PDFs com negrito duplicam chars)
+function cleanRepeatedChars(text: string): string {
+  return text.replace(/(.)\1{3,}/g, "$1");
+}
 
 async function extrairTexto(file: File): Promise<string> {
   const buffer = Buffer.from(await file.arrayBuffer());
 
   if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
     const data = await pdfParse(buffer);
-    return data.text;
+    return cleanRepeatedChars(data.text);
   }
 
   if (
@@ -31,43 +36,144 @@ async function extrairTexto(file: File): Promise<string> {
   throw new Error("Formato não suportado. Use PDF, DOCX ou TXT.");
 }
 
-const SYSTEM_PROMPT = `Você é um especialista em licitações públicas brasileiras. Sua função é extrair informações estruturadas de editais de licitação.
-
-Regras obrigatórias:
-- Retorne APENAS um objeto JSON válido, sem texto antes ou depois
-- Nunca invente dados. Se não encontrar uma informação, use null
-- Datas devem estar no formato ISO 8601: YYYY-MM-DD para datas e YYYY-MM-DDTHH:MM:SS para timestamps
-- registro_preco deve ser true apenas se o edital mencionar explicitamente "registro de preço" ou "SRP"
-- modalidade: use exatamente um dos valores: "PREGÃO ELETRÔNICO", "PREGÃO PRESENCIAL", "DISPENSA DE LICITAÇÃO", "CREDENCIAMENTO"
-- tipo_disputa: use exatamente um dos valores: "GLOBAL", "POR LOTE", "POR ITEM"
-- modo_disputa: use exatamente um dos valores: "ABERTO", "ABERTO E FECHADO", "FECHADO E ABERTO", "FECHADO"
-- regionalidade: use exatamente um dos valores: "NÃO", "SIM - PREFERÊNCIA REGIONAL", "SIM - PREFERÊNCIA LOCAL", "SIM - EXCLUSIVO REGIONAL", "SIM - EXCLUSIVO LOCAL"
-- plataforma: nome do portal onde será realizado (ex: "ComprasNet", "BLL", "Licitanet", "PNCP", etc.)
-- documentos_habilitacao: lista dos documentos exigidos para habilitação
-- itens: lista dos itens/lotes. Para cada item extraia: lote (número do lote ou null), item (número do item ou null), descricao, unidade, quantidade e valor_item (valor unitário em reais como número ou null)`;
-
-const buildUserPrompt = (texto: string) => `Analise o edital abaixo e extraia as informações no formato JSON especificado.
-
-Retorne exatamente este objeto JSON (sem markdown, sem explicações):
-{
-  "numero_edital": string | null,
-  "numero_processo": string | null,
-  "orgao": string | null,
-  "modalidade": "PREGÃO ELETRÔNICO" | "PREGÃO PRESENCIAL" | "DISPENSA DE LICITAÇÃO" | "CREDENCIAMENTO" | null,
-  "tipo_disputa": "GLOBAL" | "POR LOTE" | "POR ITEM" | null,
-  "modo_disputa": "ABERTO" | "ABERTO E FECHADO" | "FECHADO E ABERTO" | "FECHADO" | null,
-  "registro_preco": boolean | null,
-  "data_abertura": string | null,
-  "data_hora_abertura": string | null,
-  "objeto": string | null,
-  "plataforma": string | null,
-  "regionalidade": "NÃO" | "SIM - PREFERÊNCIA REGIONAL" | "SIM - PREFERÊNCIA LOCAL" | "SIM - EXCLUSIVO REGIONAL" | "SIM - EXCLUSIVO LOCAL" | null,
-  "documentos_habilitacao": string[] | null,
-  "itens": Array<{ lote: number | null, item: number | null, descricao: string, unidade: string | null, quantidade: number | null, valor_item: number | null }> | null
+// Remove markdown de código da resposta da IA (```json ... ```)
+function stripMarkdown(raw: string): string {
+  let text = raw.trim();
+  if (text.startsWith("```")) {
+    const parts = text.split("```");
+    text = parts[1] ?? "";
+    if (text.startsWith("json")) text = text.slice(4);
+    text = text.split("```")[0].trim();
+  }
+  return text;
 }
 
-Edital:
-${texto.slice(0, 50000)}`;
+// Converte "YYYY-MM-DD HH:MM" para "YYYY-MM-DDTHH:MM" (compatível com datetime-local)
+function normalizarDataHora(valor: unknown): string | null {
+  if (!valor || typeof valor !== "string") return null;
+  return valor.replace(" ", "T");
+}
+
+const SYSTEM_PROMPT = `
+<papel>
+Você é um Analista Sênior de Licitações Públicas, especialista em interpretação de
+Editais, Termos de Referência e Anexos, com profundo conhecimento da Lei nº 14.133/2021
+e das práticas administrativas brasileiras.
+</papel>
+
+<objetivo>
+Extrair informações objetivas, literais e estruturadas a partir de textos oficiais de
+licitações públicas e retornar EXCLUSIVAMENTE um JSON válido conforme o esquema definido.
+</objetivo>
+
+<proibicoes_absolutas>
+NÃO invente informações.
+NÃO faça suposições ou deduções além do texto.
+NÃO escreva explicações, comentários ou markdown fora do JSON.
+NÃO normalize, reformule ou complete textos técnicos.
+NÃO utilize conhecimento externo ao texto fornecido.
+NÃO misture conceitos jurídicos distintos.
+Quando uma informação não estiver clara e explicitamente presente, retorne null.
+Se houver conflito ou ambiguidade entre trechos, retorne null.
+</proibicoes_absolutas>
+
+<regras_gerais_de_extracao>
+- Use somente dados explicitamente identificáveis no texto.
+- Preserve a ordem dos lotes e itens conforme aparecem no edital.
+- Respeite rigorosamente os valores de ENUMs definidos para cada campo.
+- Retorne APENAS JSON válido — nenhum texto antes ou depois.
+</regras_gerais_de_extracao>
+`.trim();
+
+const buildUserPrompt = (texto: string) => `
+Analise o texto completo da licitação fornecido ao final e retorne EXCLUSIVAMENTE um JSON válido seguindo o esquema e as regras abaixo.
+
+<campo name="numero_edital">Número do certame (Pregão, Dispensa ou Credenciamento). Priorize sempre o número do Pregão ou da Dispensa.</campo>
+
+<campo name="numero_processo">Número do Processo Administrativo do certame.</campo>
+
+<campo name="orgao">
+Órgão promotor do certame. Formato obrigatório: "ORGÃO - ESTADO" (letras maiúsculas, separador " - ", estado no formato de sigla: SP, PR, MG etc.).
+- Prefeituras: use apenas "CIDADE - ESTADO" (remova PREFEITURA MUNICIPAL, MUNICÍPIO DE, ESTÂNCIA TURÍSTICA DE).
+- Demais órgãos: use a denominação institucional completa exatamente como aparece.
+- NÃO abrevie nomes de cidades. NÃO invente estados.
+</campo>
+
+<campo name="modalidade">
+Valores permitidos (use EXATAMENTE um):
+PREGÃO ELETRÔNICO | PREGÃO PRESENCIAL | DISPENSA DE LICITAÇÃO | CREDENCIAMENTO
+</campo>
+
+<campo name="modo_disputa">
+Valores permitidos (use EXATAMENTE um):
+ABERTO | ABERTO E FECHADO | FECHADO E ABERTO | FECHADO
+Normalize gênero: ABERTA → ABERTO, FECHADA → FECHADO.
+</campo>
+
+<campo name="tipo_disputa">
+Forma de julgamento da proposta. "por grupo" equivale a "POR LOTE".
+NÃO representa o critério de julgamento (ex.: menor preço).
+Valores permitidos (use EXATAMENTE um):
+GLOBAL | POR LOTE | POR ITEM
+</campo>
+
+<campo name="registro_preco">Indica se o certame é para Registro de Preços. Valores: true | false</campo>
+
+<campo name="data_abertura">Data da sessão pública. Formato: YYYY-MM-DD</campo>
+
+<campo name="data_hora_abertura">Data e horário de início da sessão pública. Formato: YYYY-MM-DD HH:MM</campo>
+
+<campo name="objeto">Descrição literal do objeto do certame, exatamente como consta no edital.</campo>
+
+<campo name="data_evento">Data do evento, somente se explicitamente mencionada. Pode ser um período (texto livre).</campo>
+
+<campo name="plataforma">Nome da Plataforma/Portal de Compras em LETRAS MAIÚSCULAS. Exemplos: BLL | BNC | COMPRAS NET | LICITAR DIGITAL. NÃO insira links.</campo>
+
+<campo name="regionalidade">
+Indicação de exclusividade ou preferência regional/local. Só marque SIM se houver declaração expressa no texto.
+Valores permitidos (use EXATAMENTE um):
+NÃO | SIM - PREFERÊNCIA REGIONAL | SIM - PREFERÊNCIA LOCAL | SIM - EXCLUSIVO REGIONAL | SIM - EXCLUSIVO LOCAL
+</campo>
+
+<campo name="itens">
+Lista detalhada dos itens ou lotes conforme o edital. Numeração: somente números (1, 2, 3...), sem texto.
+NÃO altere descrições, valores ou unidades.
+</campo>
+
+<campo name="documentos_habilitacao">Lista única de todos os documentos exigidos para habilitação (Array de Strings). Reúna todos os tópicos (Jurídica, Fiscal, Financeira etc.) em uma lista única.</campo>
+
+Retorne APENAS este JSON (sem markdown, sem explicações):
+{
+  "numero_edital": "" | null,
+  "numero_processo": "" | null,
+  "orgao": "" | null,
+  "modalidade": "" | null,
+  "tipo_disputa": "" | null,
+  "registro_preco": true | false,
+  "modo_disputa": "" | null,
+  "data_abertura": "YYYY-MM-DD" | null,
+  "data_hora_abertura": "YYYY-MM-DD HH:MM" | null,
+  "objeto": "" | null,
+  "data_evento": "" | null,
+  "plataforma": "" | null,
+  "regionalidade": "" | null,
+  "itens": [
+    {
+      "lote": 0 | null,
+      "item": 0 | null,
+      "descricao": "",
+      "unidade": "" | null,
+      "quantidade": 0 | null,
+      "valor_item": 0.00 | null
+    }
+  ],
+  "documentos_habilitacao": []
+}
+
+<texto_licitacao>
+${texto.slice(0, 120000)}
+</texto_licitacao>
+`.trim();
 
 async function analisarComAnthropic(texto: string, model: string): Promise<string> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -96,6 +202,10 @@ async function analisarComOpenAI(texto: string, model: string): Promise<string> 
   return completion.choices[0].message.content ?? "";
 }
 
+export const config = {
+  api: { bodyParser: false },
+};
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -116,22 +226,31 @@ export async function POST(request: NextRequest) {
     const texto = await extrairTexto(file);
 
     if (!texto || texto.trim().length < 100) {
-      return NextResponse.json(
-        { error: "Não foi possível extrair texto do arquivo." },
-        { status: 422 }
-      );
+      return NextResponse.json({ error: "Não foi possível extrair texto do arquivo." }, { status: 422 });
     }
 
     const raw = isAnthropic
       ? await analisarComAnthropic(texto, model)
       : await analisarComOpenAI(texto, model);
 
-    const jsonText = raw.trim().replace(/^```json\n?/, "").replace(/\n?```$/, "");
-    const dados = JSON.parse(jsonText);
+    const jsonText = stripMarkdown(raw);
+
+    let dados: Record<string, unknown>;
+    try {
+      dados = JSON.parse(jsonText);
+    } catch {
+      console.error("JSON inválido recebido da IA:", jsonText.slice(0, 500));
+      return NextResponse.json({ error: "A IA retornou um formato inválido. Tente novamente." }, { status: 422 });
+    }
+
+    // Normaliza data_hora_abertura para formato compatível com datetime-local
+    dados.data_hora_abertura = normalizarDataHora(dados.data_hora_abertura);
 
     return NextResponse.json({ dados, caracteresAnalisados: texto.length });
+
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Erro interno.";
+    console.error("Erro na análise:", msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
