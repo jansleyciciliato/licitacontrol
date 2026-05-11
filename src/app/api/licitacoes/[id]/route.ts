@@ -29,9 +29,18 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   return NextResponse.json(data);
 }
 
+export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  const supabase = getSupabaseUntyped();
+  const { error } = await supabase.from("licitacoes").delete().eq("id", params.id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}
+
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = getSupabaseUntyped();
   const body = await req.json();
+
+  console.log("[PATCH] id:", params.id, "body:", JSON.stringify(body));
 
   const { data, error } = await supabase
     .from("licitacoes")
@@ -40,6 +49,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[PATCH] Supabase error:", error);
+    return NextResponse.json({ error: error.message, details: error }, { status: 500 });
+  }
+
+  console.log("[PATCH] Sucesso:", data?.id, "status:", data?.status);
   return NextResponse.json(data);
 }

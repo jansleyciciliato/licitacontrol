@@ -76,33 +76,36 @@ export function CampoSelect({ label, value, onChange, opcoes, placeholder }: Cam
 
 interface CampoToggleProps {
   label: string;
-  descricao: string;
   value: boolean;
   onChange: (v: boolean) => void;
 }
 
-export function CampoToggle({ label, descricao, value, onChange }: CampoToggleProps) {
+export function CampoToggle({ label, value, onChange }: CampoToggleProps) {
   return (
-    <div className="flex items-center justify-between rounded-lg border border-border bg-background px-4 py-3">
-      <div>
-        <p className="text-sm font-medium text-foreground">{label}</p>
-        <p className="text-xs text-muted-foreground">{descricao}</p>
-      </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={value}
-        onClick={() => onChange(!value)}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${
-          value ? "bg-primary" : "bg-muted"
-        }`}
-      >
-        <span
-          className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
-            value ? "translate-x-6" : "translate-x-1"
+    <div className="flex flex-col gap-1.5">
+      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        {label}
+      </label>
+      <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2">
+        <span className={`text-sm font-medium ${value ? "text-foreground" : "text-muted-foreground"}`}>
+          {value ? "SIM" : "NÃO"}
+        </span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={value}
+          onClick={() => onChange(!value)}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ml-auto ${
+            value ? "bg-primary" : "bg-muted"
           }`}
-        />
-      </button>
+        >
+          <span
+            className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+              value ? "translate-x-6" : "translate-x-1"
+            }`}
+          />
+        </button>
+      </div>
     </div>
   );
 }

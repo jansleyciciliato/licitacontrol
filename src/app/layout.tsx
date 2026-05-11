@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Syne, DM_Sans } from "next/font/google";
+import { Toaster } from "sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
@@ -37,6 +38,7 @@ export default function RootLayout({
       </head>
       <body className="antialiased">
         <ThemeProvider>{children}</ThemeProvider>
+        <Toaster richColors position="bottom-right" />
       </body>
     </html>
   );

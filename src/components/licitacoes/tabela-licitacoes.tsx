@@ -111,6 +111,7 @@ export function TabelaLicitacoes({ licitacoes }: TabelaLicitacoesProps) {
               <td className="px-3 py-4">
                 <Link
                   href={`/licitacoes/${lic.id}`}
+                  onClick={() => sessionStorage.setItem("licitacoes-lista-url", window.location.href)}
                   className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                 >
                   <ChevronRight className="h-4 w-4" />

@@ -14,19 +14,26 @@ const FILTROS: { label: string; valor: StatusLicitacao | "TODAS" }[] = [
 
 interface FiltrosStatusProps {
   statusAtivo: string;
+  busca?: string;
 }
 
-export function FiltrosStatus({ statusAtivo }: FiltrosStatusProps) {
+export function FiltrosStatus({ statusAtivo, busca }: FiltrosStatusProps) {
+  const buildHref = (valor: StatusLicitacao | "TODAS") => {
+    const params = new URLSearchParams();
+    if (valor !== "TODAS") params.set("status", valor);
+    if (busca) params.set("busca", busca);
+    const qs = params.toString();
+    return qs ? `/licitacoes?${qs}` : "/licitacoes";
+  };
+
   return (
     <div className="flex flex-wrap gap-2">
       {FILTROS.map(({ label, valor }) => {
-        const href = valor === "TODAS" ? "/licitacoes" : `/licitacoes?status=${valor}`;
         const ativo = valor === "TODAS" ? statusAtivo === "TODAS" : statusAtivo === valor;
-
         return (
           <Link
             key={valor}
-            href={href}
+            href={buildHref(valor)}
             className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
               ativo
                 ? "bg-primary text-primary-foreground"
