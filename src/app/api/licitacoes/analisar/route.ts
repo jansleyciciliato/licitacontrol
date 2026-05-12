@@ -202,9 +202,7 @@ async function analisarComOpenAI(texto: string, model: string): Promise<string> 
   return completion.choices[0].message.content ?? "";
 }
 
-export const config = {
-  api: { bodyParser: false },
-};
+export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
