@@ -3,8 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown, FileText } from "lucide-react";
-import { BadgeStatus } from "./badge-status";
 import { BadgeModalidade } from "./badge-modalidade";
+import { SeletorStatus } from "@/components/detalhe/seletor-status";
 import type { Licitacao } from "@/types/database";
 
 type SortField = "orgao" | "numero_edital" | "modalidade" | "data_abertura" | "status";
@@ -105,8 +105,8 @@ export function TabelaLicitacoes({ licitacoes }: TabelaLicitacoesProps) {
               <td className="px-5 py-4 hidden md:table-cell text-muted-foreground tabular-nums">
                 {formatarData(lic.data_abertura)}
               </td>
-              <td className="px-5 py-4">
-                <BadgeStatus status={lic.status} />
+              <td className="px-5 py-4" onClick={(e) => e.stopPropagation()}>
+                <SeletorStatus licitacaoId={lic.id} statusInicial={lic.status} dropdownAlign="left" />
               </td>
               <td className="px-3 py-4">
                 <Link

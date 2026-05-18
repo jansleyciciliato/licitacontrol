@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import type { StatusLicitacao } from "@/types/database";
 
 const CONFIG: Record<StatusLicitacao, { label: string; dot: string; bg: string; border: string; text: string }> = {
@@ -20,23 +22,41 @@ const TODOS_STATUS = Object.keys(CONFIG) as StatusLicitacao[];
 interface SeletorStatusProps {
   licitacaoId: string;
   statusInicial: StatusLicitacao;
+  dropdownAlign?: "left" | "right";
 }
 
-export function SeletorStatus({ licitacaoId, statusInicial }: SeletorStatusProps) {
+export function SeletorStatus({ licitacaoId, statusInicial, dropdownAlign = "right" }: SeletorStatusProps) {
+  const router = useRouter();
   const [status, setStatus] = useState(statusInicial);
   const [aberto, setAberto] = useState(false);
   const [salvando, setSalvando] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  const abrirDropdown = () => {
+    if (!btnRef.current) return;
+    const r = btnRef.current.getBoundingClientRect();
+    setPos(
+      dropdownAlign === "left"
+        ? { top: r.bottom + window.scrollY + 6, left: r.left + window.scrollX }
+        : { top: r.bottom + window.scrollY + 6, left: r.right + window.scrollX - 160 }
+    );
+    setAberto(true);
+  };
 
   useEffect(() => {
+    if (!aberto) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setAberto(false);
-      }
+      if (
+        btnRef.current?.contains(e.target as Node) ||
+        dropRef.current?.contains(e.target as Node)
+      ) return;
+      setAberto(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, []);
+  }, [aberto]);
 
   const mudarStatus = async (novoStatus: StatusLicitacao) => {
     setAberto(false);
@@ -56,6 +76,7 @@ export function SeletorStatus({ licitacaoId, statusInicial }: SeletorStatusProps
         toast.error(json?.error ?? "Erro ao atualizar o status.");
       } else {
         toast.success(`Status alterado para ${CONFIG[novoStatus].label}`);
+        router.refresh();
       }
     } catch {
       setStatus(anterior);
@@ -67,20 +88,13 @@ export function SeletorStatus({ licitacaoId, statusInicial }: SeletorStatusProps
 
   const c = CONFIG[status];
 
-  return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setAberto((v) => !v)}
-        disabled={salvando}
-        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-opacity ${c.bg} ${c.border} ${c.text} ${salvando ? "opacity-60 cursor-not-allowed" : "hover:opacity-80 cursor-pointer"}`}
-      >
-        <span className={`h-1.5 w-1.5 rounded-full ${c.dot}`} />
-        {c.label}
-        <ChevronDown className="h-3 w-3 ml-0.5 opacity-60" />
-      </button>
-
-      {aberto && (
-        <div className="absolute right-0 top-full mt-1.5 z-50 min-w-[160px] rounded-lg border border-border bg-card shadow-lg py-1 overflow-hidden">
+  const dropdown = aberto && pos
+    ? createPortal(
+        <div
+          ref={dropRef}
+          style={{ position: "absolute", top: pos.top, left: pos.left, zIndex: 9999 }}
+          className="min-w-[160px] rounded-lg border border-border bg-card shadow-lg py-1 overflow-hidden"
+        >
           {TODOS_STATUS.map((s) => {
             const cfg = CONFIG[s];
             const ativo = s === status;
@@ -96,8 +110,24 @@ export function SeletorStatus({ licitacaoId, statusInicial }: SeletorStatusProps
               </button>
             );
           })}
-        </div>
-      )}
-    </div>
+        </div>,
+        document.body
+      )
+    : null;
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        onClick={abrirDropdown}
+        disabled={salvando}
+        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-opacity ${c.bg} ${c.border} ${c.text} ${salvando ? "opacity-60 cursor-not-allowed" : "hover:opacity-80 cursor-pointer"}`}
+      >
+        <span className={`h-1.5 w-1.5 rounded-full ${c.dot}`} />
+        {c.label}
+        <ChevronDown className="h-3 w-3 ml-0.5 opacity-60" />
+      </button>
+      {dropdown}
+    </>
   );
 }
