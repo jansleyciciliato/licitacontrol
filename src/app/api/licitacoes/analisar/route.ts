@@ -100,21 +100,40 @@ Analise o texto completo da licitação fornecido ao final e retorne EXCLUSIVAME
 </campo>
 
 <campo name="modalidade">
-Valores permitidos (use EXATAMENTE um):
-PREGÃO ELETRÔNICO | PREGÃO PRESENCIAL | DISPENSA DE LICITAÇÃO | CREDENCIAMENTO
+Modalidade da licitação.
+Escolha EXATAMENTE um dos valores abaixo.
+Retorne apenas o valor escolhido, sem explicações.
+
+PREGÃO ELETRÔNICO
+PREGÃO PRESENCIAL
+DISPENSA DE LICITAÇÃO
+CREDENCIAMENTO
 </campo>
 
 <campo name="modo_disputa">
-Valores permitidos (use EXATAMENTE um):
-ABERTO | ABERTO E FECHADO | FECHADO E ABERTO | FECHADO
+Modo de disputa da licitação.
+Escolha EXATAMENTE um dos valores abaixo.
+Retorne apenas o valor escolhido, sem explicações.
+
+ABERTO
+ABERTO E FECHADO
+FECHADO E ABERTO
+FECHADO
+
+Exceção: Se a proposta tiver que ser enviada por e-mail considere FECHADO.
+
 Normalize gênero: ABERTA → ABERTO, FECHADA → FECHADO.
 </campo>
 
 <campo name="tipo_disputa">
 Forma de julgamento da proposta. "por grupo" equivale a "POR LOTE".
 NÃO representa o critério de julgamento (ex.: menor preço).
-Valores permitidos (use EXATAMENTE um):
-GLOBAL | POR LOTE | POR ITEM
+Escolha EXATAMENTE um dos valores abaixo.
+Retorne apenas o valor escolhido, sem explicações.
+
+GLOBAL
+POR LOTE
+POR ITEM
 </campo>
 
 <campo name="registro_preco">Indica se o certame é para Registro de Preços. Valores: true | false</campo>
@@ -127,12 +146,28 @@ GLOBAL | POR LOTE | POR ITEM
 
 <campo name="data_evento">Data do evento, somente se explicitamente mencionada. Pode ser um período (texto livre).</campo>
 
-<campo name="plataforma">Nome da Plataforma/Portal de Compras em LETRAS MAIÚSCULAS. Exemplos: BLL | BNC | COMPRAS NET | LICITAR DIGITAL. NÃO insira links.</campo>
+<campo name="plataforma">Extrair nome da Plataforma/Portal de Compras em LETRAS MAIÚSCULAS. 
+
+- NÃO insira links/URLs completas, apenas nome resumido.
+
+- Exemplos comuns: 
+BLL
+BNC
+COMPRAS NET
+FIORILLI
+LICITAR DIGITAL
+- Se conter SCPI tratar como FIORILLI </campo>
 
 <campo name="regionalidade">
 Indicação de exclusividade ou preferência regional/local. Só marque SIM se houver declaração expressa no texto.
-Valores permitidos (use EXATAMENTE um):
-NÃO | SIM - PREFERÊNCIA REGIONAL | SIM - PREFERÊNCIA LOCAL | SIM - EXCLUSIVO REGIONAL | SIM - EXCLUSIVO LOCAL
+Escolha EXATAMENTE um dos valores abaixo.
+Retorne apenas o valor escolhido, sem explicações.
+
+NÃO
+SIM - PREFERÊNCIA REGIONAL
+SIM - PREFERÊNCIA LOCAL
+SIM - EXCLUSIVO REGIONAL
+SIM - EXCLUSIVO LOCAL
 </campo>
 
 <campo name="itens">
