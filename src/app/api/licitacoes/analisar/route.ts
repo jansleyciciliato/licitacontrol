@@ -94,7 +94,7 @@ Analise o texto completo da licitação fornecido ao final e retorne EXCLUSIVAME
 
 <campo name="orgao">
 Órgão promotor do certame. Formato obrigatório: "ORGÃO - ESTADO" (letras maiúsculas, separador " - ", estado no formato de sigla: SP, PR, MG etc.).
-- Prefeituras: use apenas "CIDADE - ESTADO" (remova PREFEITURA MUNICIPAL, MUNICÍPIO DE, ESTÂNCIA TURÍSTICA DE).
+- Prefeituras: use apenas "CIDADE - ESTADO" (remova PREFEITURA MUNICIPAL, MUNICÍPIO DE, ESTÂNCIA TURÍSTICA DE, CIDADE DE).
 - Demais órgãos: use a denominação institucional completa exatamente como aparece.
 - NÃO abrevie nomes de cidades. NÃO invente estados.
 </campo>
@@ -207,10 +207,10 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
-    const file = formData.get("file") as File | null;
+    const files = formData.getAll("file") as File[];
     const model = (formData.get("model") as string | null) ?? "gpt-4o-mini";
 
-    if (!file) {
+    if (!files.length) {
       return NextResponse.json({ error: "Nenhum arquivo enviado." }, { status: 400 });
     }
 
@@ -221,10 +221,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Modelo "${model}" não suportado.` }, { status: 400 });
     }
 
-    const texto = await extrairTexto(file);
+    const textos = await Promise.all(files.map(extrairTexto));
+    const texto = textos.join("\n\n---\n\n");
 
     if (!texto || texto.trim().length < 100) {
-      return NextResponse.json({ error: "Não foi possível extrair texto do arquivo." }, { status: 422 });
+      return NextResponse.json({ error: "Não foi possível extrair texto dos arquivos." }, { status: 422 });
     }
 
     const raw = isAnthropic

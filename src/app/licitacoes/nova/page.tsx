@@ -17,14 +17,14 @@ export default function NovaLicitacaoPage() {
 
   const modeloAtual = MODELOS.find((m) => m.id === modeloSelecionado);
 
-  const processar = async (file: File) => {
+  const processar = async (files: File[]) => {
     setErro(null);
     setEtapa("analisando");
 
     try {
-      // 1. Extrair e analisar com IA
+      // 1. Extrair e analisar com IA (todos os arquivos concatenados)
       const formData = new FormData();
-      formData.append("file", file);
+      files.forEach((f) => formData.append("file", f));
       formData.append("model", modeloSelecionado);
 
       const resAnalise = await fetch("/api/licitacoes/analisar", {
@@ -91,7 +91,7 @@ export default function NovaLicitacaoPage() {
               </div>
             </div>
 
-            <UploadArquivo onArquivoSelecionado={processar} />
+            <UploadArquivo onArquivosSelecionados={processar} />
 
             {erro && (
               <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
